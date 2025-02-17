@@ -1,3 +1,6 @@
+/* This SQL query is designed to analyze customer retention cohorts. 
+It calculates the percentage of customers retained over time, starting from their first purchase month.  */ 
+
 WITH
 /* CTE to create cohort items by truncating purchase dates to the month level */
 cohort_items AS (
