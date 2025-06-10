@@ -1,27 +1,32 @@
-/* This SQL query is designed to analyze customer retention cohorts. 
-It calculates the percentage of customers retained over time, starting from their first purchase month.  */ 
-
 WITH
 /* CTE to create cohort items by truncating purchase dates to the month level */
 cohort_items AS (
     SELECT
-        date_trunc('month', purchase_date) AS cohort_month,
-        customer_id
-    FROM _table_
+        date_trunc(date, month) AS cohort_month,
+        userid as customer_id
+    FROM < _your_table_ >
+),
+
+/* CTE to calculate the first purchase month for each customer */
+first_purchase_month AS (
+    SELECT
+        customer_id,
+        MIN(cohort_month) AS cohort_month_start
+    FROM cohort_items
+    GROUP BY customer_id
 ),
 
 /* CTE to calculate customer activities by comparing cohort months */
 customer_activities AS (
     SELECT
-        a.customer_id,
-        a.cohort_month AS cohort_month_start, /* The month the customer first made a purchase */
-        b.cohort_month AS cohort_month_next,  /* Subsequent months the customer made purchases */
-        DATEDIFF('month', a.cohort_month, b.cohort_month) AS month_number /* Difference in months between first purchase and subsequent purchases */
-    FROM cohort_items AS a
-    LEFT JOIN cohort_items AS b
-        ON a.customer_id = b.customer_id /* Join on the same customer */
-        AND b.cohort_month >= a.cohort_month /* Ensure the subsequent month is greater than or equal to the first purchase month */
-    /* This join ensures we capture all subsequent months for each customer's first purchase month */
+        f.customer_id,
+        f.cohort_month_start,
+        c.cohort_month AS cohort_month_next,
+        date_diff(c.cohort_month, f.cohort_month_start, month) AS month_number
+    FROM first_purchase_month AS f
+    JOIN cohort_items AS c
+        ON f.customer_id = c.customer_id
+        AND c.cohort_month >= f.cohort_month_start
 ),
 
 /* CTE to calculate the number of customers retained in each cohort month */
@@ -29,7 +34,7 @@ retention_table AS (
     SELECT
         cohort_month_start,
         month_number,
-        COUNT(DISTINCT customer_id) AS num_customers /* Count distinct customers for each cohort month and month number */
+        COUNT(DISTINCT customer_id) AS num_customers
     FROM customer_activities
     GROUP BY cohort_month_start, month_number
 ),
@@ -37,19 +42,19 @@ retention_table AS (
 /* CTE to calculate the size of each cohort */
 cohort_size AS (
     SELECT
-        cohort_month,
-        COUNT(DISTINCT customer_id) AS num_customers /* Count distinct customers for each cohort month */
-    FROM cohort_items
-    GROUP BY cohort_month
+        cohort_month_start,
+        COUNT(DISTINCT customer_id) AS num_customers
+    FROM first_purchase_month
+    GROUP BY cohort_month_start
 )
 
 /* Final SELECT to calculate the retention percentage */
 SELECT
-    a.cohort_month_start,
-    b.num_customers AS cohort_size, /* Size of the cohort */
-    a.month_number,
-    a.num_customers::FLOAT / b.num_customers AS percentage /* Retention percentage */
-FROM retention_table AS a
-LEFT JOIN cohort_size AS b
-    ON a.cohort_month_start = b.cohort_month /* Join on the cohort month to get the cohort size */
-ORDER BY a.cohort_month_start, a.month_number; /* Order by cohort month and month number */
+    r.cohort_month_start,
+    s.num_customers AS cohort_size,
+    r.month_number,
+    r.num_customers / s.num_customers AS percentage
+FROM retention_table AS r
+JOIN cohort_size AS s
+    ON r.cohort_month_start = s.cohort_month_start
+ORDER BY r.cohort_month_start, r.month_number;
